@@ -20,7 +20,9 @@ In order to use this tool, you will need access to some BSV for funding your tra
 
 You will need to place the master private key (xprv) in a file:
 
-`$HOME/.meta-writer/funding_key`
+mainnet `$HOME/.meta-writer/funding_key`
+
+testnet `$HOME/.meta-writer.test/funding_key`
 
 This is a json formatted file that should contain your xprv and the derivation path of the address you have funds in.
 

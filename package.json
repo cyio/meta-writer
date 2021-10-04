@@ -18,11 +18,10 @@
   ],
   "license": "Open BSV",
   "dependencies": {
-    "bitcore-explorers": "^1.0.1",
-    "bsv": "^0.27.1",
+    "bsv": "^1.5.6",
     "command-line-args": "^5.1.1",
-    "request": "^2.88.0",
-    "request-promise": "^4.2.4"
+    "node-fetch": "^2.6.5",
+    "request": "^2.88.0"
   },
   "devDependencies": {
     "standard": "^12.0.1"

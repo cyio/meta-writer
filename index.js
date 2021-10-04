@@ -3,29 +3,51 @@ const fs = require('fs')
 const path = require('path')
 
 const bsv = require('bsv')
-const explorer = require('bitcore-explorers')
-const request = require('request-promise')
+const fetch = require('node-fetch')
 
 const fee = 400
-const feeb = 1.1
+const feeb = 0.6
 const minimumOutputValue = 546
+const Networks = bsv.Networks
+Networks.defaultNetwork = Networks.testnet // 设置为测试网，切主网时注掉
+const isTestnet = Networks.defaultNetwork === Networks.testnet
+const savePath = isTestnet ? '.meta-writer.test' : '.meta-writer'
 
-async function sendTX (hex) {
+async function sendTX(hex) {
+  const url = `https://api.whatsonchain.com/v1/bsv/${isTestnet ? 'test' : 'main'}/tx/raw`
+  // uri: 'https://apiv2.metasv.com/tx/broadcast',
   const options = {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
-    uri: 'https://api.whatsonchain.com/v1/bsv/main/tx/raw',
-    body: {
+    body: JSON.stringify({
       txhex: hex
-    },
-    json: true
+      // hex
+    })
   }
 
   try {
-    const response = await request(options)
+    const response = await fetch(url, options)
+      .then(res => res.json())
     return response
+    // return response.txid
+  } catch (err) {
+    throw err
+  }
+}
+async function getUtxos(address, network = 'main') {
+  const url = `https://api.whatsonchain.com/v1/bsv/${network}/address/${address}/unspent`
+  // const url = `https://api.mattercloud.net/api/v3/${network}/address/${address}/utxo`
+  try {
+    const response = await fetch(url)
+      .then(res => res.json())
+    return response.map(i => ({
+      txid: i.tx_hash,
+      vout: i.tx_pos,
+      satoshis: i.value,
+      script: bsv.Script.buildPublicKeyHashOut(address).toString()
+    }))
   } catch (err) {
     throw err
   }
@@ -51,13 +73,13 @@ function getFundingKey () {
 function getDataWithExtension (name) {
   const homeDir = process.env.HOME
 
-  const filename = path.join(homeDir, '.meta-writer', name)
+  const filename = path.join(homeDir, savePath, name)
 
   let data
   try {
     data = JSON.parse(fs.readFileSync(filename))
   } catch (e) {
-    const dir = path.join(homeDir, '.meta-writer')
+    const dir = path.join(homeDir, savePath)
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir)
     }
@@ -76,13 +98,14 @@ function getDataWithExtension (name) {
 function dumpData (name, data) {
   const homeDir = process.env.HOME
 
-  const filename = path.join(homeDir, '.meta-writer', `${name}.dat`)
+  const filename = path.join(homeDir, savePath, `${name}.dat`)
 
   fs.writeFileSync(filename, JSON.stringify(data, null, 2))
 }
 
 function filterUTXOs (utxos, satoshisRequired) {
   let total = 0
+  // console.log(utxos)
   const res = utxos.filter((utxo, i) => {
     if (total < satoshisRequired) {
       total += utxo.satoshis
@@ -96,19 +119,6 @@ function filterUTXOs (utxos, satoshisRequired) {
   }
 
   return res
-}
-
-async function getUtxosFromBitIndex (address) {
-  return new Promise((resolve, reject) => {
-    const insight = new explorer.Insight('https://api.bitindex.network')
-    insight.getUnspentUtxos(address, (err, res) => {
-      if (err) {
-        reject(err)
-      } else {
-        resolve(res)
-      }
-    })
-  })
 }
 
 function getDummyUTXO () {
@@ -134,7 +144,9 @@ async function addNode (fundingKey, parentKey, childKey, script) {
   const feeForMetanetNode = Math.max(Math.ceil(tempTX._estimateSize() * feeb), minimumOutputValue)
 
   // Now we have decide how to fund it.
-  let utxos = await getUtxosFromBitIndex(fundingKey.publicKey.toAddress())
+  const addr = fundingKey.publicKey.toAddress().toString()
+  console.log('addr: ', addr)
+  let utxos = await getUtxos(addr, isTestnet ? 'test': 'main')
 
   if (parentKey) {
     // We are adding a child metanet node: we need to send funds to
@@ -243,7 +255,8 @@ async function addNode (fundingKey, parentKey, childKey, script) {
   oprParts.push(Buffer.from(txid).toString('hex'))
 
   if (options.file) {
-    oprParts.push(Buffer.from('19HxigV4QyBv3tHpQVcUEQyq1pzZVdoAut').toString('hex'))
+    oprParts.push(Buffer.from('|').toString('hex')) // 便于解析
+    // oprParts.push(Buffer.from('19HxigV4QyBv3tHpQVcUEQyq1pzZVdoAut').toString('hex'))
     oprParts.push(fs.readFileSync(options.file).toString('hex'))
     oprParts.push(Buffer.from(options.type).toString('hex'))
     oprParts.push(Buffer.from('binary').toString('hex'))
@@ -264,5 +277,5 @@ async function addNode (fundingKey, parentKey, childKey, script) {
   data[childPath] = tx.toString()
   dumpData(name, data)
 
-  console.log(tx.toString())
+  console.log('success: ', tx.toString())
 })()
